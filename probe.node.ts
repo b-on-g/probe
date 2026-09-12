@@ -46,6 +46,11 @@ namespace $ {
 
 	export const $bog_probe_ready = `typeof $ !== 'undefined' && document.readyState === 'complete'`
 
+	export function $bog_probe_text( key: string ) {
+		if( key === 'Enter' ) return '\r'
+		return key.length === 1 ? key : ''
+	}
+
 	export function $bog_probe_pause( ms: number ) {
 		return new Promise< void >( done => setTimeout( done, ms ) )
 	}
@@ -80,7 +85,7 @@ namespace $ {
 		}
 
 		for( const name of [ 'google-chrome', 'google-chrome-stable', 'chromium', 'chrome' ] ) {
-			const found = $node.child_process.spawnSync( 'command', [ '-v', name ], { encoding: 'utf8', shell: true } )
+			const found = $node[ 'child_process' ].spawnSync( 'command', [ '-v', name ], { encoding: 'utf8', shell: true } )
 			const bin = String( found.stdout ?? '' ).trim().split( '\n' )[ 0 ] ?? ''
 			if( bin && $node.fs.existsSync( bin ) ) return bin
 		}
@@ -167,7 +172,7 @@ namespace $ {
 
 		async open() {
 
-			this.child = $node.child_process.spawn( this.bin, [
+			this.child = $node[ 'child_process' ].spawn( this.bin, [
 				'--headless=new',
 				'--remote-debugging-port=0',
 				`--user-data-dir=${ this.profile }`,
@@ -326,9 +331,11 @@ namespace $ {
 		}
 
 		async press( key: string, code: number ) {
+			const text = $bog_probe_text( key )
 			for( const type of [ 'keyDown', 'keyUp' ] ) {
 				await this.send( 'Input.dispatchKeyEvent', {
 					type, key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code,
+					... text && type === 'keyDown' ? { text } : {},
 				}, this.page )
 			}
 		}
@@ -406,12 +413,12 @@ namespace $ {
 		const code = `
 			const $ = require( ${ JSON.stringify( file ) } )
 			Promise.resolve().then( ()=> $[ ${ JSON.stringify( d + fn ) } ]() ).then(
-				report => { process.stdout.write( String( report ) + '\\n' ); process.exit( 0 ) },
+				()=> process.exit( 0 ),
 				error => { process.stdout.write( 'проба упала: ' + String( ( error && error.stack ) || error ) + '\\n' ); process.exit( 1 ) },
 			)
 		`
 
-		const run = $node.child_process.spawnSync( $node.process.execPath, [ '-e', code ], {
+		const run = $node[ 'child_process' ].spawnSync( $node.process.execPath, [ '-e', code ], {
 			encoding: 'utf8',
 			timeout,
 			maxBuffer: 1 << 24,

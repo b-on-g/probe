@@ -46,6 +46,16 @@ namespace $ {
 			$mol_assert_not( $bog_probe_fits( result( 401, 400 ) ) )
 		},
 
+		'a key carries text only when it types something'() {
+			$mol_assert_equal( $bog_probe_text( 'Enter' ), '\r' )
+			$mol_assert_equal( $bog_probe_text( 'a' ), 'a' )
+			$mol_assert_equal( $bog_probe_text( 'Я' ), 'Я' )
+			$mol_assert_equal( $bog_probe_text( ' ' ), ' ' )
+			$mol_assert_equal( $bog_probe_text( 'Escape' ), '' )
+			$mol_assert_equal( $bog_probe_text( 'Tab' ), '' )
+			$mol_assert_equal( $bog_probe_text( 'ArrowLeft' ), '' )
+		},
+
 		'rects script asks for every selector and the page metrics'() {
 			const script = $bog_probe_rects_script([ '[a]', '[b]' ])
 			$mol_assert_ok( script.includes( '"[a]"' ) )

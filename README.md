@@ -23,13 +23,14 @@ jsdom в node раскладку не считает: `getBoundingClientRect()` 
   ```
 
 - `$bog_probe_rects({ ... opts, selectors })` — для каждого селектора `querySelector` → `{ left, top, width, height, right, bottom }` или `null`, плюс `viewport` (innerWidth/innerHeight) и `scroll` (scrollWidth/scrollHeight).
-- `$bog_probe_test( bundle, fn, timeout = 300000 )` — обёртка для синхронного мол-теста: `spawnSync` дочернего node, который требует собранный `-/node.js` и зовёт `$[fn]()`. Возвращает stdout+stderr, при ненулевом коде `$mol_fail` с выводом. Нужна потому, что `$mol_test_run` убивает async-тест через 1000 мс, а Chrome стартует дольше.
+- `$bog_probe_test( bundle, fn, timeout = 300000 )` — обёртка для синхронного мол-теста: `spawnSync` дочернего node, который требует собранный `-/node.js` и зовёт `$[fn]()`. Возвращает stdout+stderr, при ненулевом коде `$mol_fail` с выводом. Нужна потому, что `$mol_test_run` убивает async-тест через 1000 мс, а Chrome стартует дольше. **Печатает сама проверка, обёртка молчит, пока всё хорошо:** то, что должно попасть в вывод (замеры, итоговая строка, которую сверяет тест), `fn` пишет сам — `$node.fs.writeSync( 1, … )`. Возвращённое значение обёртка НЕ печатает, иначе каждая строка выходила бы дважды: один раз из проверки, второй из обёртки. При падении обёртка печатает стек.
 - Помощники для ассертов, чистые функции над прямоугольниками:
   - `$bog_probe_aligned( a, b, 'top' | 'left' | 'bottom' | 'right', tolerance = 1 )`
   - `$bog_probe_beside( left, right, gap_max = Infinity )` — `right` начинается не раньше конца `left` и они пересекаются по вертикали
   - `$bog_probe_inside( box, outer )`
   - `$bog_probe_fits( rects_result )` — `scroll.width <= viewport.width`, нет горизонтальной прокрутки
 - Низкий уровень: `$bog_probe_chrome_bin()`, `$bog_probe_static`, `$bog_probe_browser` (`open`, `viewport`, `open_page`, `evaluate`, `until`, `press`, `close`).
+- `press( key, code )` сам кладёт в `keyDown` поле `text` для печатных клавиш (`text: key`) и Enter (`text: '\r'`), служебным (Escape, Tab, стрелки) не кладёт. Без `text` на Enter и печатных клавишах `Input.dispatchKeyEvent` раскручивает головной процесс headless Chrome до гигабайт памяти.
 
 ## Пример
 
@@ -45,10 +46,11 @@ namespace $ {
 			width: 400,
 			selectors: [ '[bog_myapp_app_menu]', '[bog_myapp_app_body]' ],
 		})
-		if( got === $bog_probe_skip ) return $bog_probe_skip
+		const say = ( line: string )=> { $node.fs.writeSync( 1, line + '\n' ); return line }
+		if( got === $bog_probe_skip ) return say( $bog_probe_skip )
 		if( !$bog_probe_fits( got ) ) return $mol_fail( new Error( `прокрутка ${ got.scroll.width } > ${ got.viewport.width }` ) )
 		if( !$bog_probe_beside( got.rects[ '[bog_myapp_app_menu]' ], got.rects[ '[bog_myapp_app_body]' ] ) ) return $mol_fail( new Error( 'меню наехало на текст' ) )
-		return 'вёрстка в порядке'
+		return say( 'вёрстка в порядке' )
 	}
 }
 ```
