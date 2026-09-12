@@ -1,0 +1,458 @@
+namespace $ {
+
+	export type $bog_probe_message = {
+		readonly id?: number
+		readonly method?: string
+		readonly sessionId?: string
+		readonly params?: { readonly [ key: string ]: unknown }
+		readonly result?: { readonly [ key: string ]: unknown }
+	}
+
+	export type $bog_probe_rect = {
+		readonly left: number
+		readonly top: number
+		readonly width: number
+		readonly height: number
+		readonly right: number
+		readonly bottom: number
+	}
+
+	export type $bog_probe_size = {
+		readonly width: number
+		readonly height: number
+	}
+
+	export type $bog_probe_rects_result = {
+		readonly rects: { readonly [ selector: string ]: $bog_probe_rect | null }
+		readonly viewport: $bog_probe_size
+		readonly scroll: $bog_probe_size
+	}
+
+	export type $bog_probe_opts = {
+		readonly page: string
+		readonly script: string
+		readonly width?: number
+		readonly height?: number
+		readonly ready?: string
+		readonly limit?: number
+		readonly root?: string
+	}
+
+	export type $bog_probe_rects_opts = Omit< $bog_probe_opts, 'script' > & {
+		readonly selectors: readonly string[]
+	}
+
+	export const $bog_probe_skip = 'Chrome не найден, проба пропущена'
+
+	export const $bog_probe_ready = `typeof $ !== 'undefined' && document.readyState === 'complete'`
+
+	export function $bog_probe_pause( ms: number ) {
+		return new Promise< void >( done => setTimeout( done, ms ) )
+	}
+
+	export function $bog_probe_dig( source: unknown, ... path: readonly string[] ): unknown {
+		let node: unknown = source
+		for( const step of path ) {
+			if( !node || typeof node !== 'object' ) return undefined
+			node = ( node as { readonly [ key: string ]: unknown } )[ step ]
+		}
+		return node
+	}
+
+	export function $bog_probe_chrome_bin() {
+
+		const env = $node.process.env
+
+		const listed = [
+			env[ 'CHROME_BIN' ],
+			env[ 'CHROME_PATH' ],
+			'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+			'/Applications/Chromium.app/Contents/MacOS/Chromium',
+			'/usr/bin/google-chrome',
+			'/usr/bin/google-chrome-stable',
+			'/usr/bin/chromium',
+			'/usr/bin/chromium-browser',
+			'/opt/google/chrome/chrome',
+		]
+
+		for( const bin of listed ) {
+			if( bin && $node.fs.existsSync( bin ) ) return String( bin )
+		}
+
+		for( const name of [ 'google-chrome', 'google-chrome-stable', 'chromium', 'chrome' ] ) {
+			const found = $node.child_process.spawnSync( 'command', [ '-v', name ], { encoding: 'utf8', shell: true } )
+			const bin = String( found.stdout ?? '' ).trim().split( '\n' )[ 0 ] ?? ''
+			if( bin && $node.fs.existsSync( bin ) ) return bin
+		}
+
+		return ''
+	}
+
+	export const $bog_probe_types: { readonly [ ext: string ]: string } = {
+		'.html': 'text/html; charset=utf-8',
+		'.js': 'text/javascript; charset=utf-8',
+		'.mjs': 'text/javascript; charset=utf-8',
+		'.css': 'text/css; charset=utf-8',
+		'.json': 'application/json; charset=utf-8',
+		'.tree': 'text/plain; charset=utf-8',
+		'.map': 'application/json; charset=utf-8',
+		'.md': 'text/markdown; charset=utf-8',
+		'.svg': 'image/svg+xml',
+		'.png': 'image/png',
+		'.jpg': 'image/jpeg',
+		'.webp': 'image/webp',
+		'.woff2': 'font/woff2',
+		'.woff': 'font/woff',
+		'.ttf': 'font/ttf',
+	}
+
+	export class $bog_probe_static {
+
+		port = 0
+		server
+
+		constructor( readonly root = String( $node.path.resolve( '.' ) ) ) {
+
+			this.server = $node.http.createServer( ( req: { readonly url: string }, res: {
+				writeHead( code: number, headers?: object ): void
+				end( body?: unknown ): void
+			} )=> {
+
+				const rel = decodeURIComponent( String( req.url ).split( '?' )[ 0 ] ?? '' )
+				const file = String( $node.path.join( this.root, rel ) )
+
+				if( !file.startsWith( this.root ) ) { res.writeHead( 403 ); res.end(); return }
+
+				$node.fs.readFile( file, ( error: unknown, data: unknown )=> {
+					if( error ) { res.writeHead( 404 ); res.end( 'нет ' + rel ); return }
+					res.writeHead( 200, {
+						'content-type': $bog_probe_types[ String( $node.path.extname( file ) ) ] ?? 'application/octet-stream',
+					} )
+					res.end( data )
+				} )
+
+			} )
+
+		}
+
+		async open() {
+			await new Promise< void >( done => this.server.listen( 0, '127.0.0.1', done ) )
+			this.port = Number( this.server.address().port )
+			return this
+		}
+
+		close() {
+			this.server.close()
+		}
+
+		uri( path: string ) {
+			return `http://127.0.0.1:${ this.port }${ path.startsWith( '/' ) ? '' : '/' }${ path }`
+		}
+
+	}
+
+	export class $bog_probe_browser {
+
+		child: { kill( signal?: string ): void } | null = null
+		socket: WebSocket | null = null
+		seq = 0
+		waits = new Map< number, ( reply: $bog_probe_message )=> void >()
+		fails = new Map< number, ( error: Error )=> void >()
+		frames = new Set< string >()
+		page = ''
+		target = ''
+		dropped = ''
+
+		constructor( readonly bin: string, readonly profile: string ) {}
+
+		async open() {
+
+			this.child = $node.child_process.spawn( this.bin, [
+				'--headless=new',
+				'--remote-debugging-port=0',
+				`--user-data-dir=${ this.profile }`,
+				'--no-first-run',
+				'--no-default-browser-check',
+				'--no-sandbox',
+				'--disable-dev-shm-usage',
+				'--disable-gpu',
+				'--disable-extensions',
+				'--hide-scrollbars',
+				'--window-size=1400,900',
+				'about:blank',
+			], { stdio: 'ignore' } )
+
+			const port = await this.port_of( String( $node.path.join( this.profile, 'DevToolsActivePort' ) ) )
+
+			const version = await ( await fetch( `http://127.0.0.1:${ port }/json/version` ) ).json()
+			const socket = new WebSocket( String( version.webSocketDebuggerUrl ) )
+			this.socket = socket
+
+			await new Promise< void >( done => { socket.onopen = ()=> done() } )
+
+			socket.onmessage = event => this.accept( JSON.parse( String( event.data ) ) )
+			socket.onclose = ()=> this.drop( 'сокет отладки закрыт' )
+
+			const made = await this.send( 'Target.createTarget', { url: 'about:blank' } )
+			this.target = String( $bog_probe_dig( made, 'result', 'targetId' ) )
+
+			const bound = await this.send( 'Target.attachToTarget', { targetId: this.target, flatten: true } )
+			this.page = String( $bog_probe_dig( bound, 'result', 'sessionId' ) )
+
+			await this.send( 'Page.enable', {}, this.page )
+			await this.send( 'Runtime.enable', {}, this.page )
+			await this.send( 'Target.setAutoAttach', {
+				autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
+			}, this.page )
+
+			return this
+		}
+
+		async port_of( stamp: string ) {
+
+			const started = Date.now()
+
+			while( Date.now() - started < 30000 ) {
+				if( $node.fs.existsSync( stamp ) ) {
+					const line = String( $node.fs.readFileSync( stamp, 'utf8' ) ).split( '\n' )[ 0 ] ?? ''
+					if( line.trim() ) return Number( line.trim() )
+				}
+				await $bog_probe_pause( 200 )
+			}
+
+			return $mol_fail( new Error( `Chrome не отдал порт отладки за ${ Date.now() - started } мс` ) )
+		}
+
+		accept( reply: $bog_probe_message ) {
+
+			const id = reply.id
+
+			if( id && this.waits.has( id ) ) {
+				const done = this.waits.get( id )!
+				this.waits.delete( id )
+				this.fails.delete( id )
+				done( reply )
+				return
+			}
+
+			if( reply.method === 'Target.attachedToTarget' ) {
+				const session = String( $bog_probe_dig( reply, 'params', 'sessionId' ) )
+				this.frames.add( session )
+				this.send( 'Runtime.enable', {}, session )
+				this.send( 'Target.setAutoAttach', {
+					autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
+				}, session )
+				this.send( 'Runtime.runIfWaitingForDebugger', {}, session )
+			}
+
+			if( reply.method === 'Target.detachedFromTarget' ) {
+				this.frames.delete( String( $bog_probe_dig( reply, 'params', 'sessionId' ) ) )
+			}
+
+		}
+
+		drop( reason: string ) {
+			this.dropped = reason
+			const fails = [ ... this.fails.values() ]
+			this.waits.clear()
+			this.fails.clear()
+			for( const fail of fails ) fail( new Error( reason ) )
+		}
+
+		send( method: string, params: object = {}, session = '' ) {
+
+			const socket = this.socket
+			if( !socket ) return Promise.reject( new Error( 'Браузер не открыт' ) )
+			if( this.dropped ) return Promise.reject( new Error( this.dropped ) )
+
+			const id = ++ this.seq
+
+			return new Promise< $bog_probe_message >( ( done, fail )=> {
+				this.waits.set( id, done )
+				this.fails.set( id, fail )
+				socket.send( JSON.stringify( session ? { id, method, params, sessionId: session } : { id, method, params } ) )
+			} )
+
+		}
+
+		async viewport( width: number, height: number ) {
+			await this.send( 'Emulation.setDeviceMetricsOverride', {
+				width, height, deviceScaleFactor: 1, mobile: width < 700,
+			}, this.page )
+		}
+
+		async evaluate( code: string, limit: number, session = this.page ) {
+
+			const asked = this.send( 'Runtime.evaluate', {
+				expression: `(async()=>{ ${ code } })()`,
+				awaitPromise: true,
+				returnByValue: true,
+			}, session )
+
+			const late = $bog_probe_pause( limit ).then(
+				()=> $mol_fail( new Error( `Страница не ответила за ${ limit } мс` ) )
+			)
+
+			const reply = await Promise.race([ asked, late ])
+
+			const wrong = $bog_probe_dig( reply, 'result', 'exceptionDetails' )
+
+			if( wrong ) return $mol_fail( new Error( 'Страница бросила: ' + String(
+				$bog_probe_dig( wrong, 'exception', 'description' ) ?? $bog_probe_dig( wrong, 'text' )
+			) ) )
+
+			return $bog_probe_dig( reply, 'result', 'result', 'value' )
+		}
+
+		async until( code: string, limit: number, step = 300 ) {
+
+			const started = Date.now()
+			const guarded = `return (()=>{ try { return ( ${ code } ) } catch( error ) { return false } })()`
+
+			while( Date.now() - started < limit ) {
+				const got = await this.evaluate( guarded, Math.min( 15000, limit ) )
+				if( got ) return Date.now() - started
+				await $bog_probe_pause( step )
+			}
+
+			return -1
+		}
+
+		async open_page( uri: string, ready = $bog_probe_ready, limit = 30000 ) {
+			await this.send( 'Page.navigate', { url: uri }, this.page )
+			const waited = await this.until( ready, limit )
+			if( waited < 0 ) return $mol_fail( new Error( `Страница ${ uri } не готова за ${ limit } мс: ${ ready }` ) )
+			return waited
+		}
+
+		async press( key: string, code: number ) {
+			for( const type of [ 'keyDown', 'keyUp' ] ) {
+				await this.send( 'Input.dispatchKeyEvent', {
+					type, key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code,
+				}, this.page )
+			}
+		}
+
+		close() {
+			try { this.socket?.close() } catch( error ) {}
+			try { this.child?.kill( 'SIGKILL' ) } catch( error ) {}
+		}
+
+	}
+
+	export async function $bog_probe_run( opts: $bog_probe_opts ): Promise< unknown > {
+
+		const bin = $bog_probe_chrome_bin()
+		if( !bin ) return $bog_probe_skip
+
+		const root = String( $node.path.resolve( opts.root ?? $node.process.cwd() ) )
+		const width = opts.width ?? 1280
+		const height = opts.height ?? 800
+		const limit = opts.limit ?? 30000
+
+		const site = await new $bog_probe_static( root ).open()
+		const profile = String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-' ) ) )
+		const browser = new $bog_probe_browser( bin, profile )
+
+		try {
+
+			await browser.open()
+			await browser.viewport( width, height )
+			await browser.open_page( site.uri( opts.page ), opts.ready ?? $bog_probe_ready, limit )
+			return await browser.evaluate( opts.script, limit )
+
+		} finally {
+			browser.close()
+			site.close()
+			try { $node.fs.rmSync( profile, { recursive: true, force: true } ) } catch( error ) {}
+		}
+
+	}
+
+	export function $bog_probe_rects_script( selectors: readonly string[] ) {
+		return `
+			const rects = {}
+			for( const selector of ${ JSON.stringify( selectors ) } ) {
+				const node = document.querySelector( selector )
+				if( !node ) { rects[ selector ] = null; continue }
+				const box = node.getBoundingClientRect()
+				rects[ selector ] = {
+					left: box.left, top: box.top, width: box.width, height: box.height, right: box.right, bottom: box.bottom,
+				}
+			}
+			const scroller = document.scrollingElement || document.documentElement
+			return {
+				rects,
+				viewport: { width: innerWidth, height: innerHeight },
+				scroll: { width: scroller.scrollWidth, height: scroller.scrollHeight },
+			}
+		`
+	}
+
+	export async function $bog_probe_rects( opts: $bog_probe_rects_opts ): Promise< $bog_probe_rects_result | typeof $bog_probe_skip > {
+		const { selectors, ... rest } = opts
+		const got = await $bog_probe_run({ ... rest, script: $bog_probe_rects_script( selectors ) })
+		if( got === $bog_probe_skip ) return $bog_probe_skip
+		return got as $bog_probe_rects_result
+	}
+
+	export function $bog_probe_test( bundle: string, fn: string, timeout = 300000 ) {
+
+		const d = '$'
+		const file = String( $node.path.resolve( bundle ) )
+
+		if( !$node.fs.existsSync( file ) ) return $mol_fail( new Error( `Проба: нет ${ bundle }, модуль не собран` ) )
+
+		const code = `
+			const $ = require( ${ JSON.stringify( file ) } )
+			Promise.resolve().then( ()=> $[ ${ JSON.stringify( d + fn ) } ]() ).then(
+				report => { process.stdout.write( String( report ) + '\\n' ); process.exit( 0 ) },
+				error => { process.stdout.write( 'проба упала: ' + String( ( error && error.stack ) || error ) + '\\n' ); process.exit( 1 ) },
+			)
+		`
+
+		const run = $node.child_process.spawnSync( $node.process.execPath, [ '-e', code ], {
+			encoding: 'utf8',
+			timeout,
+			maxBuffer: 1 << 24,
+			cwd: $node.process.cwd(),
+		} )
+
+		const out = String( run.stdout ?? '' ) + String( run.stderr ?? '' )
+
+		$node.fs.writeSync( 1, out )
+
+		if( run.status !== 0 ) return $mol_fail( new Error(
+			`Проба ${ fn }: код ${ run.status }, сигнал ${ run.signal }\n${ out }`
+		) )
+
+		return out
+	}
+
+	export function $bog_probe_aligned(
+		a: $bog_probe_rect | null,
+		b: $bog_probe_rect | null,
+		axis: 'top' | 'left' | 'bottom' | 'right',
+		tolerance = 1,
+	) {
+		if( !a || !b ) return false
+		return Math.abs( a[ axis ] - b[ axis ] ) <= tolerance
+	}
+
+	export function $bog_probe_beside( left: $bog_probe_rect | null, right: $bog_probe_rect | null, gap_max = Infinity ) {
+		if( !left || !right ) return false
+		if( right.left < left.right ) return false
+		if( right.left - left.right > gap_max ) return false
+		return left.top < right.bottom && right.top < left.bottom
+	}
+
+	export function $bog_probe_inside( box: $bog_probe_rect | null, outer: $bog_probe_rect | null ) {
+		if( !box || !outer ) return false
+		return box.left >= outer.left && box.top >= outer.top && box.right <= outer.right && box.bottom <= outer.bottom
+	}
+
+	export function $bog_probe_fits( result: $bog_probe_rects_result ) {
+		return result.scroll.width <= result.viewport.width
+	}
+
+}
