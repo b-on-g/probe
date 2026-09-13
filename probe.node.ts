@@ -51,6 +51,13 @@ namespace $ {
 		return key.length === 1 ? key : ''
 	}
 
+	export function $bog_probe_code( key: string ) {
+		if( /^[a-z]$/i.test( key ) ) return 'Key' + key.toUpperCase()
+		if( /^[0-9]$/.test( key ) ) return 'Digit' + key
+		if( key === ' ' ) return 'Space'
+		return key
+	}
+
 	export function $bog_probe_pause( ms: number ) {
 		return new Promise< void >( done => setTimeout( done, ms ) )
 	}
@@ -167,6 +174,7 @@ namespace $ {
 		page = ''
 		target = ''
 		dropped = ''
+		limit = 30000
 
 		constructor( readonly bin: string, readonly profile: string ) {}
 
@@ -243,11 +251,10 @@ namespace $ {
 			if( reply.method === 'Target.attachedToTarget' ) {
 				const session = String( $bog_probe_dig( reply, 'params', 'sessionId' ) )
 				this.frames.add( session )
-				this.send( 'Runtime.enable', {}, session )
-				this.send( 'Target.setAutoAttach', {
-					autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
-				}, session )
-				this.send( 'Runtime.runIfWaitingForDebugger', {}, session )
+				const spare = ( method: string, params: object = {} )=> this.send( method, params, session ).catch( ()=> null )
+				spare( 'Runtime.enable' )
+				spare( 'Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true } )
+				spare( 'Runtime.runIfWaitingForDebugger' )
 			}
 
 			if( reply.method === 'Target.detachedFromTarget' ) {
@@ -264,7 +271,7 @@ namespace $ {
 			for( const fail of fails ) fail( new Error( reason ) )
 		}
 
-		send( method: string, params: object = {}, session = '' ) {
+		send( method: string, params: object = {}, session = '', limit = this.limit, late = `Chrome не ответил на ${ method }` ) {
 
 			const socket = this.socket
 			if( !socket ) return Promise.reject( new Error( 'Браузер не открыт' ) )
@@ -273,9 +280,18 @@ namespace $ {
 			const id = ++ this.seq
 
 			return new Promise< $bog_probe_message >( ( done, fail )=> {
-				this.waits.set( id, done )
-				this.fails.set( id, fail )
+
+				const timer = setTimeout( ()=> {
+					this.waits.delete( id )
+					this.fails.delete( id )
+					fail( new Error( `${ late } за ${ limit } мс` ) )
+				}, limit )
+
+				this.waits.set( id, reply => { clearTimeout( timer ); done( reply ) } )
+				this.fails.set( id, error => { clearTimeout( timer ); fail( error ) } )
+
 				socket.send( JSON.stringify( session ? { id, method, params, sessionId: session } : { id, method, params } ) )
+
 			} )
 
 		}
@@ -288,17 +304,11 @@ namespace $ {
 
 		async evaluate( code: string, limit: number, session = this.page ) {
 
-			const asked = this.send( 'Runtime.evaluate', {
+			const reply = await this.send( 'Runtime.evaluate', {
 				expression: `(async()=>{ ${ code } })()`,
 				awaitPromise: true,
 				returnByValue: true,
-			}, session )
-
-			const late = $bog_probe_pause( limit ).then(
-				()=> $mol_fail( new Error( `Страница не ответила за ${ limit } мс` ) )
-			)
-
-			const reply = await Promise.race([ asked, late ])
+			}, session, limit, 'Страница не ответила' )
 
 			const wrong = $bog_probe_dig( reply, 'result', 'exceptionDetails' )
 
@@ -334,7 +344,7 @@ namespace $ {
 			const text = $bog_probe_text( key )
 			for( const type of [ 'keyDown', 'keyUp' ] ) {
 				await this.send( 'Input.dispatchKeyEvent', {
-					type, key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code,
+					type, key, code: $bog_probe_code( key ), windowsVirtualKeyCode: code, nativeVirtualKeyCode: code,
 					... text && type === 'keyDown' ? { text } : {},
 				}, this.page )
 			}

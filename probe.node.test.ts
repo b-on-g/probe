@@ -56,6 +56,51 @@ namespace $ {
 			$mol_assert_equal( $bog_probe_text( 'ArrowLeft' ), '' )
 		},
 
+		'a key names the physical code pages read by'() {
+			$mol_assert_equal( $bog_probe_code( 'h' ), 'KeyH' )
+			$mol_assert_equal( $bog_probe_code( 'V' ), 'KeyV' )
+			$mol_assert_equal( $bog_probe_code( '7' ), 'Digit7' )
+			$mol_assert_equal( $bog_probe_code( ' ' ), 'Space' )
+			$mol_assert_equal( $bog_probe_code( 'Enter' ), 'Enter' )
+			$mol_assert_equal( $bog_probe_code( 'Escape' ), 'Escape' )
+		},
+
+		async 'a silent browser fails the command by its name and forgets it'() {
+			const browser = new $bog_probe_browser( '', '' )
+			const sent = [] as string[]
+			browser.socket = { send: ( text: string )=> sent.push( text ) } as unknown as WebSocket
+			browser.limit = 20
+
+			const failed = async ( task: Promise< unknown > )=> {
+				try { await task } catch( error ) { return ( error as Error ).message }
+				return 'answered'
+			}
+
+			$mol_assert_equal(
+				await failed( browser.send( 'Input.dispatchMouseEvent', { type: 'mouseMoved' } ) ),
+				'Chrome не ответил на Input.dispatchMouseEvent за 20 мс',
+			)
+			$mol_assert_equal( await failed( browser.evaluate( 'return 1', 30 ) ), 'Страница не ответила за 30 мс' )
+			$mol_assert_equal( sent.length, 2 )
+			$mol_assert_equal( browser.waits.size, 0 )
+			$mol_assert_equal( browser.fails.size, 0 )
+		},
+
+		async 'an answer in time settles the command'() {
+			const browser = new $bog_probe_browser( '', '' )
+			browser.limit = 200
+			browser.socket = {
+				send: ( text: string )=> {
+					const { id } = JSON.parse( text )
+					setTimeout( ()=> browser.accept({ id, result: { result: { value: 7 } } }), 5 )
+				},
+			} as unknown as WebSocket
+
+			$mol_assert_equal( await browser.evaluate( 'return 7', 100 ), 7 )
+			$mol_assert_equal( browser.waits.size, 0 )
+			$mol_assert_equal( browser.fails.size, 0 )
+		},
+
 		'rects script asks for every selector and the page metrics'() {
 			const script = $bog_probe_rects_script([ '[a]', '[b]' ])
 			$mol_assert_ok( script.includes( '"[a]"' ) )

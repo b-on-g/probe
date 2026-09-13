@@ -30,7 +30,8 @@ jsdom в node раскладку не считает: `getBoundingClientRect()` 
   - `$bog_probe_inside( box, outer )`
   - `$bog_probe_fits( rects_result )` — `scroll.width <= viewport.width`, нет горизонтальной прокрутки
 - Низкий уровень: `$bog_probe_chrome_bin()`, `$bog_probe_static`, `$bog_probe_browser` (`open`, `viewport`, `open_page`, `evaluate`, `until`, `press`, `close`).
-- `press( key, code )` сам кладёт в `keyDown` поле `text` для печатных клавиш (`text: key`) и Enter (`text: '\r'`), служебным (Escape, Tab, стрелки) не кладёт. Без `text` на Enter и печатных клавишах `Input.dispatchKeyEvent` раскручивает головной процесс headless Chrome до гигабайт памяти.
+- `press( key, code )` сам кладёт в `keyDown` поле `text` для печатных клавиш (`text: key`) и Enter (`text: '\r'`), служебным (Escape, Tab, стрелки) не кладёт. Без `text` на Enter и печатных клавишах `Input.dispatchKeyEvent` раскручивает головной процесс headless Chrome до гигабайт памяти. Поле `code` — физическая клавиша, как её читает `event.code`: `$bog_probe_code( 'h' )` даёт `KeyH`, цифра — `Digit7`, пробел — `Space`, служебные остаются своим именем.
+- `send( method, params, session, limit = browser.limit, late )` ждёт ответа Chrome не дольше `limit` (по умолчанию 30 000 мс) и падает с именем команды: `Chrome не ответил на Input.dispatchMouseEvent за 30000 мс`. Занятый главный поток страницы иначе вешал пробу молча до таймаута обёртки. `evaluate( code, limit )` отдаёт свой `limit` в `send` и падает текстом `Страница не ответила за … мс`.
 
 ## Пример
 
