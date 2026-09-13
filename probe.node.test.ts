@@ -101,6 +101,31 @@ namespace $ {
 			$mol_assert_equal( browser.fails.size, 0 )
 		},
 
+		async 'press puts the physical code and the typed text on the wire'() {
+			const browser = new $bog_probe_browser( '', '' )
+			const sent = [] as $bog_probe_message[]
+			browser.socket = {
+				send: ( text: string )=> {
+					const message = JSON.parse( text ) as $bog_probe_message
+					sent.push( message )
+					browser.accept({ id: message.id, result: {} })
+				},
+			} as unknown as WebSocket
+
+			await browser.press( 'h', 72 )
+			await browser.press( 'Escape', 27 )
+
+			$mol_assert_like(
+				sent.map( ({ method, params })=> [ method, params?.type, params?.code, params?.text ?? null ] ),
+				[
+					[ 'Input.dispatchKeyEvent', 'keyDown', 'KeyH', 'h' ],
+					[ 'Input.dispatchKeyEvent', 'keyUp', 'KeyH', null ],
+					[ 'Input.dispatchKeyEvent', 'keyDown', 'Escape', null ],
+					[ 'Input.dispatchKeyEvent', 'keyUp', 'Escape', null ],
+				],
+			)
+		},
+
 		'rects script asks for every selector and the page metrics'() {
 			const script = $bog_probe_rects_script([ '[a]', '[b]' ])
 			$mol_assert_ok( script.includes( '"[a]"' ) )
