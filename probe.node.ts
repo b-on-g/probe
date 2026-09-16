@@ -149,7 +149,7 @@ namespace $ {
 
 		async open() {
 			await new Promise< void >( done => this.server.listen( 0, '127.0.0.1', done ) )
-			this.port = Number( this.server.address().port )
+			this.port = Number( ( this.server.address() as { port: number } ).port )
 			return this
 		}
 
@@ -166,7 +166,7 @@ namespace $ {
 
 	export class $bog_probe_browser {
 
-		child: { kill( signal?: string ): void } | null = null
+		child: ReturnType< typeof $node[ 'child_process' ][ 'spawn' ] > | null = null
 		socket: WebSocket | null = null
 		seq = 0
 		waits = new Map< number, ( reply: $bog_probe_message )=> void >()
@@ -321,8 +321,15 @@ namespace $ {
 		}
 
 		async shot( file: string ) {
-			const reply = await this.send( 'Page.captureScreenshot', { format: 'png' }, this.page, this.limit, 'Скриншот не снялся' )
-			const data = String( $bog_probe_dig( reply, 'result', 'data' ) ?? '' )
+			let data = ''
+			let wrong = ''
+			for( let attempt = 0; attempt < 3 && !data; ++ attempt ) {
+				const reply = await this.send( 'Page.captureScreenshot', { format: 'png' }, this.page, this.limit, 'Скриншот не снялся' )
+				data = String( $bog_probe_dig( reply, 'result', 'data' ) ?? '' )
+				wrong = String( $bog_probe_dig( reply, 'error', 'message' ) ?? '' )
+				if( !data ) await $bog_probe_pause( 1000 )
+			}
+			if( !data ) return $mol_fail( new Error( 'Скриншот пустой: ' + ( wrong || 'CDP не вернул data' ) ) )
 			$node.fs.mkdirSync( $node.path.dirname( file ), { recursive: true } )
 			$node.fs.writeFileSync( file, Buffer.from( data, 'base64' ) )
 			return file
