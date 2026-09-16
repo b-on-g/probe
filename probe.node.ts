@@ -158,6 +158,7 @@ namespace $ {
 		}
 
 		uri( path: string ) {
+			if( /^https?:\/\//.test( path ) ) return path
 			return `http://127.0.0.1:${ this.port }${ path.startsWith( '/' ) ? '' : '/' }${ path }`
 		}
 
@@ -319,6 +320,14 @@ namespace $ {
 			return $bog_probe_dig( reply, 'result', 'result', 'value' )
 		}
 
+		async shot( file: string ) {
+			const reply = await this.send( 'Page.captureScreenshot', { format: 'png' }, this.page, this.limit, 'Скриншот не снялся' )
+			const data = String( $bog_probe_dig( reply, 'result', 'data' ) ?? '' )
+			$node.fs.mkdirSync( $node.path.dirname( file ), { recursive: true } )
+			$node.fs.writeFileSync( file, Buffer.from( data, 'base64' ) )
+			return file
+		}
+
 		async until( code: string, limit: number, step = 300 ) {
 
 			const started = Date.now()
@@ -377,6 +386,41 @@ namespace $ {
 			await browser.viewport( width, height )
 			await browser.open_page( site.uri( opts.page ), opts.ready ?? $bog_probe_ready, limit )
 			return await browser.evaluate( opts.script, limit )
+
+		} finally {
+			browser.close()
+			site.close()
+			try { $node.fs.rmSync( profile, { recursive: true, force: true } ) } catch( error ) {}
+		}
+
+	}
+
+	export type $bog_probe_shot_opts = Omit< $bog_probe_opts, 'script' > & {
+		readonly file: string
+		readonly script?: string
+	}
+
+	export async function $bog_probe_shot( opts: $bog_probe_shot_opts ): Promise< string | typeof $bog_probe_skip > {
+
+		const bin = $bog_probe_chrome_bin()
+		if( !bin ) return $bog_probe_skip
+
+		const root = String( $node.path.resolve( opts.root ?? $node.process.cwd() ) )
+		const width = opts.width ?? 1280
+		const height = opts.height ?? 800
+		const limit = opts.limit ?? 30000
+
+		const site = await new $bog_probe_static( root ).open()
+		const profile = String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-' ) ) )
+		const browser = new $bog_probe_browser( bin, profile )
+
+		try {
+
+			await browser.open()
+			await browser.viewport( width, height )
+			await browser.open_page( site.uri( opts.page ), opts.ready ?? $bog_probe_ready, limit )
+			if( opts.script ) await browser.evaluate( opts.script, limit )
+			return await browser.shot( opts.file )
 
 		} finally {
 			browser.close()
