@@ -125,12 +125,12 @@ namespace $ {
 
 		constructor( readonly root = String( $node.path.resolve( '.' ) ) ) {
 
-			this.server = $node.http.createServer( ( req: { readonly url: string }, res: {
-				writeHead( code: number, headers?: object ): void
-				end( body?: unknown ): void
-			} )=> {
+			this.server = $node.http.createServer( (
+				req: InstanceType< $node['http']['IncomingMessage'] >,
+				res: InstanceType< $node['http']['ServerResponse'] >,
+			)=> {
 
-				const rel = decodeURIComponent( String( req.url ).split( '?' )[ 0 ] ?? '' )
+				const rel = decodeURIComponent( String( req.url ?? '' ).split( '?' )[ 0 ] ?? '' )
 				const file = String( $node.path.join( this.root, rel ) )
 
 				if( !file.startsWith( this.root ) ) { res.writeHead( 403 ); res.end(); return }
