@@ -36,6 +36,7 @@ namespace $ {
 		readonly ready?: string
 		readonly limit?: number
 		readonly root?: string
+		readonly flags?: readonly string[]
 	}
 
 	export type $bog_probe_rects_opts = Omit< $bog_probe_opts, 'script' > & {
@@ -177,7 +178,7 @@ namespace $ {
 		dropped = ''
 		limit = 30000
 
-		constructor( readonly bin: string, readonly profile: string ) {}
+		constructor( readonly bin: string, readonly profile: string, readonly flags: readonly string[] = [] ) {}
 
 		async open() {
 
@@ -193,6 +194,7 @@ namespace $ {
 				'--disable-extensions',
 				'--hide-scrollbars',
 				'--window-size=1400,900',
+				... this.flags,
 				'about:blank',
 			], { stdio: 'ignore' } )
 
@@ -385,7 +387,7 @@ namespace $ {
 
 		const site = await new $bog_probe_static( root ).open()
 		const profile = String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-' ) ) )
-		const browser = new $bog_probe_browser( bin, profile )
+		const browser = new $bog_probe_browser( bin, profile, opts.flags )
 
 		try {
 
@@ -419,7 +421,7 @@ namespace $ {
 
 		const site = await new $bog_probe_static( root ).open()
 		const profile = String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-' ) ) )
-		const browser = new $bog_probe_browser( bin, profile )
+		const browser = new $bog_probe_browser( bin, profile, opts.flags )
 
 		try {
 

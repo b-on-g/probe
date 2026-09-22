@@ -19,6 +19,7 @@ jsdom в node раскладку не считает: `getBoundingClientRect()` 
       ready?: string   // typeof $ !== 'undefined' && document.readyState === 'complete'
       limit?: number   // 30000 мс на готовность
       root?: string    // корень MAM, process.cwd()
+      flags?: string[] // дописываются к аргументам Chrome, например [ "--use-angle=swiftshader" ]
   }
   ```
 
