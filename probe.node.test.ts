@@ -76,14 +76,64 @@ namespace $ {
 				return 'answered'
 			}
 
-			$mol_assert_equal(
-				await failed( browser.send( 'Input.dispatchMouseEvent', { type: 'mouseMoved' } ) ),
-				'Chrome не ответил на Input.dispatchMouseEvent за 20 мс',
-			)
-			$mol_assert_equal( await failed( browser.evaluate( 'return 1', 30 ) ), 'Страница не ответила за 30 мс' )
-			$mol_assert_equal( sent.length, 2 )
+			const first = await failed( browser.send( 'Input.dispatchMouseEvent', { type: 'mouseMoved' } ) )
+
+			$mol_assert_ok( first.startsWith( 'Chrome не ответил на Input.dispatchMouseEvent за ' ) )
+			$mol_assert_ok( first.endsWith( ': браузер тоже не отвечает' ) )
+
+			const second = await failed( browser.evaluate( 'return 1', 30 ) )
+
+			$mol_assert_ok( second.startsWith( 'Страница не ответила за ' ) )
+			$mol_assert_ok( second.endsWith( ': браузер тоже не отвечает' ) )
+
+			$mol_assert_equal( sent.filter( text => text.includes( $bog_probe_beat ) ).length, 2 )
 			$mol_assert_equal( browser.waits.size, 0 )
 			$mol_assert_equal( browser.fails.size, 0 )
+		},
+
+		async 'a busy page is waited out while the browser answers the heartbeat'() {
+			const browser = new $bog_probe_browser( '', '' )
+			const sent = [] as { id: number, method: string }[]
+
+			browser.socket = { send: ( text: string )=> {
+				const message = JSON.parse( text ) as { id: number, method: string }
+				sent.push( message )
+				if( message.method === $bog_probe_beat ) {
+					setTimeout( ()=> browser.accept({ id: message.id, result: {} }), 1 )
+				}
+			} } as unknown as WebSocket
+
+			const task = browser.evaluate( 'return 1', 20 )
+
+			await new Promise( done => setTimeout( done, 120 ) )
+
+			const call = sent.find( one => one.method === 'Runtime.evaluate' )!
+			browser.accept({ id: call.id, result: { result: { value: 7 } } })
+
+			$mol_assert_equal( await task, 7 )
+			$mol_assert_ok( sent.filter( one => one.method === $bog_probe_beat ).length >= 1 )
+		},
+
+		async 'a slow machine stretches the waits instead of failing them'() {
+			const browser = new $bog_probe_browser( '', '' )
+			let answers = 0
+
+			browser.socket = { send: ( text: string )=> {
+				const message = JSON.parse( text ) as { id: number, method: string, params: { expression: string } }
+				const asks = String( message.params?.expression ?? '' )
+				const late = asks.includes( 'готово' ) && ++ answers < 3
+				setTimeout( ()=> browser.accept({
+					id: message.id,
+					result: { result: { value: late ? false : ( asks.includes( 'return 1' ) ? 1 : true ) } },
+				}), 1 )
+			} } as unknown as WebSocket
+
+			browser.stretch = 3
+
+			const waited = await browser.until( 'готово', 40, 10 )
+
+			$mol_assert_ok( waited >= 0 )
+			$mol_assert_equal( browser.stretch, 3 )
 		},
 
 		async 'an answer in time settles the command'() {

@@ -45,6 +45,20 @@ namespace $ {
 
 	export const $bog_probe_skip = 'Chrome не найден, проба пропущена'
 
+	/** Потолок ожидания ответа страницы: за ним страница считается мёртвой, а не занятой. */
+	export const $bog_probe_patience = 120000
+
+	/** Вызов к процессу браузера, а не к странице: отвечает, даже когда отрисовщик задавлен. */
+	export const $bog_probe_beat = 'Browser.getVersion'
+
+	export const $bog_probe_beat_limit = 5000
+
+	/** Круговой вызов пустышки на свободной машине, мс. По нему меряется, во сколько раз машина медленнее. */
+	export const $bog_probe_stretch_base = 20
+
+	/** Потолок растяжки ожиданий: дальше это уже не занятость, а поломка. */
+	export const $bog_probe_stretch_max = 8
+
 	export const $bog_probe_ready = `typeof $ !== 'undefined' && document.readyState === 'complete'`
 
 	export function $bog_probe_text( key: string ) {
@@ -177,6 +191,8 @@ namespace $ {
 		target = ''
 		dropped = ''
 		limit = 30000
+		patience = $bog_probe_patience
+		stretch = 1
 
 		constructor( readonly bin: string, readonly profile: string, readonly flags: readonly string[] = [] ) {}
 
@@ -281,17 +297,53 @@ namespace $ {
 			if( this.dropped ) return Promise.reject( new Error( this.dropped ) )
 
 			const id = ++ this.seq
+			const began = Date.now()
+			const patience = Math.max( limit, this.patience )
+			const alone = method === $bog_probe_beat
 
 			return new Promise< $bog_probe_message >( ( done, fail )=> {
 
-				const timer = setTimeout( ()=> {
+				let timer = null as ReturnType< typeof setTimeout > | null
+				let settled = false
+
+				const stop = ()=> {
+					settled = true
+					if( timer ) clearTimeout( timer )
+				}
+
+				const give = ( note: string )=> {
+					if( settled ) return
+					stop()
 					this.waits.delete( id )
 					this.fails.delete( id )
-					fail( new Error( `${ late } за ${ limit } мс` ) )
-				}, limit )
+					fail( new Error( `${ late } за ${ Date.now() - began } мс${ note }` ) )
+				}
 
-				this.waits.set( id, reply => { clearTimeout( timer ); done( reply ) } )
-				this.fails.set( id, error => { clearTimeout( timer ); fail( error ) } )
+				const watch = ()=> {
+					timer = setTimeout( async ()=> {
+
+						if( settled ) return
+
+						if( alone || Date.now() - began >= patience ) {
+							return give( alone ? '' : `, браузер жив, но страница молчит дольше ${ patience } мс` )
+						}
+
+						const beat = await this.send(
+							$bog_probe_beat, {}, '', Math.min( $bog_probe_beat_limit, Math.max( 200, limit ) ),
+						).then( ()=> true, ()=> false )
+
+						if( settled ) return
+						if( !beat ) return give( ': браузер тоже не отвечает' )
+
+						watch()
+
+					}, limit )
+				}
+
+				watch()
+
+				this.waits.set( id, reply => { stop(); done( reply ) } )
+				this.fails.set( id, error => { stop(); fail( error ) } )
 
 				socket.send( JSON.stringify( session ? { id, method, params, sessionId: session } : { id, method, params } ) )
 
@@ -339,22 +391,60 @@ namespace $ {
 
 		async until( code: string, limit: number, step = 300 ) {
 
-			const started = Date.now()
+			const began = Date.now()
 			const guarded = `return (()=>{ try { return ( ${ code } ) } catch( error ) { return false } })()`
 
-			while( Date.now() - started < limit ) {
-				const got = await this.evaluate( guarded, Math.min( 15000, limit ) )
-				if( got ) return Date.now() - started
-				await $bog_probe_pause( step )
+			for( let round = 0; round < 2; ++ round ) {
+
+				const started = Date.now()
+				const patient = limit * this.stretch
+
+				while( Date.now() - started < patient ) {
+					const got = await this.evaluate( guarded, Math.min( 15000, limit ) )
+					if( got ) return Date.now() - began
+					await $bog_probe_pause( step )
+				}
+
+				if( round ) break
+
+				const before = this.stretch
+				await this.gauge()
+				if( this.stretch <= before ) break
 			}
 
 			return -1
 		}
 
+		/** Во сколько раз машина сейчас медленнее свободной: по нему растягиваются ожидания. */
+		async gauge() {
+
+			const times = [] as number[]
+
+			for( let step = 0; step < 5; ++ step ) {
+				const began = Date.now()
+				await this.evaluate( 'return 1', 15000 )
+				times.push( Date.now() - began )
+			}
+
+			times.sort( ( first, second )=> first - second )
+
+			const middle = times[ Math.floor( times.length / 2 ) ] ?? $bog_probe_stretch_base
+
+			this.stretch = Math.min(
+				$bog_probe_stretch_max,
+				Math.max( 1, Math.round( middle / $bog_probe_stretch_base ) ),
+			)
+
+			return this.stretch
+		}
+
 		async open_page( uri: string, ready = $bog_probe_ready, limit = 30000 ) {
 			await this.send( 'Page.navigate', { url: uri }, this.page )
 			const waited = await this.until( ready, limit )
-			if( waited < 0 ) return $mol_fail( new Error( `Страница ${ uri } не готова за ${ limit } мс: ${ ready }` ) )
+			if( waited < 0 ) return $mol_fail( new Error(
+				`Страница ${ uri } не готова за ${ limit * this.stretch } мс: ${ ready }`
+			) )
+			await this.gauge()
 			return waited
 		}
 
