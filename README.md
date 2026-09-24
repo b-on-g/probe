@@ -16,6 +16,7 @@ jsdom в node раскладку не считает: `getBoundingClientRect()` 
       script: string   // тело функции, `return` даёт результат
       width?: number   // 1280
       height?: number  // 800
+      scale?: number   // 1, плотность пикселей вьюпорта: 2 это ретина, холсты и картинки получают буфер вдвое
       ready?: string   // typeof $ !== 'undefined' && document.readyState === 'complete'
       limit?: number   // 30000 мс на готовность
       root?: string    // корень MAM, process.cwd()

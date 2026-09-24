@@ -33,6 +33,7 @@ namespace $ {
 		readonly script: string
 		readonly width?: number
 		readonly height?: number
+		readonly scale?: number
 		readonly ready?: string
 		readonly limit?: number
 		readonly root?: string
@@ -351,9 +352,9 @@ namespace $ {
 
 		}
 
-		async viewport( width: number, height: number ) {
+		async viewport( width: number, height: number, scale = 1 ) {
 			await this.send( 'Emulation.setDeviceMetricsOverride', {
-				width, height, deviceScaleFactor: 1, mobile: width < 700,
+				width, height, deviceScaleFactor: scale, mobile: width < 700,
 			}, this.page )
 		}
 
@@ -482,7 +483,7 @@ namespace $ {
 		try {
 
 			await browser.open()
-			await browser.viewport( width, height )
+			await browser.viewport( width, height, opts.scale )
 			await browser.open_page( site.uri( opts.page ), opts.ready ?? $bog_probe_ready, limit )
 			return await browser.evaluate( opts.script, limit )
 
@@ -516,7 +517,7 @@ namespace $ {
 		try {
 
 			await browser.open()
-			await browser.viewport( width, height )
+			await browser.viewport( width, height, opts.scale )
 			await browser.open_page( site.uri( opts.page ), opts.ready ?? $bog_probe_ready, limit )
 			if( opts.script ) await browser.evaluate( opts.script, limit )
 			return await browser.shot( opts.file )
