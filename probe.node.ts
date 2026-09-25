@@ -55,17 +55,20 @@ namespace $ {
 
 	export function $bog_probe_done( out: string, ... oks: readonly string[] ) {
 
+		if( out.includes( $bog_probe_skip ) ) {
+
+			if( $bog_probe_needed() ) return $mol_fail( new Error(
+				`Браузер объявлен обязательным переменной ${ $bog_probe_need }, а ${ $bog_probe_skip }:\n${ out }`
+			) )
+
+			$node.fs.writeSync( 1, `проба: пропущена, ${ $bog_probe_need } не объявлена\n` )
+
+			return true
+		}
+
 		for( const ok of oks ) if( out.includes( ok ) ) return true
 
-		if( !out.includes( $bog_probe_skip ) ) return false
-
-		if( $bog_probe_needed() ) return $mol_fail( new Error(
-			`Браузер объявлен обязательным переменной ${ $bog_probe_need }, а ${ $bog_probe_skip }:\n${ out }`
-		) )
-
-		$node.fs.writeSync( 1, `проба: пропущена, ${ $bog_probe_need } не объявлена\n` )
-
-		return true
+		return false
 	}
 
 	/** Потолок ожидания ответа страницы: за ним страница считается мёртвой, а не занятой. */
