@@ -641,4 +641,39 @@ namespace $ {
 		return result.scroll.width <= result.viewport.width
 	}
 
+	export const $bog_probe_step_env = 'GITHUB_STEP_SUMMARY'
+
+	export const $bog_probe_step_head = '| сценарий | худший кадр, мс | средний, мс | перепланирований | порог, мс |\n| --- | --- | --- | --- | --- |'
+
+	export type $bog_probe_step_frame = {
+		readonly scene: string
+		readonly peak: number
+		readonly tick: number
+		readonly plans: number
+		readonly limit: number
+	}
+
+	export function $bog_probe_step_row( frame: $bog_probe_step_frame ) {
+		return `| ${ frame.scene } | ${ frame.peak.toFixed( 1 ) } | ${ frame.tick.toFixed( 2 ) }`
+			+ ` | ${ frame.plans } | ${ frame.limit } |`
+	}
+
+	export function $bog_probe_step_add( frame: $bog_probe_step_frame, env = $node.process.env ) {
+
+		const path = env[ $bog_probe_step_env ]
+		if( !path ) return ''
+
+		const row = $bog_probe_step_row( frame )
+
+		try {
+			let was = ''
+			try { was = String( $node.fs.readFileSync( path ) ) } catch( error ) {}
+			const head = was.includes( $bog_probe_step_head ) ? '' : $bog_probe_step_head + '\n'
+			$node.fs.appendFileSync( path, head + row + '\n' )
+			return row
+		} catch( error ) {
+			return ''
+		}
+	}
+
 }

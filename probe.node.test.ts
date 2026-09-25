@@ -185,6 +185,42 @@ namespace $ {
 			$mol_assert_ok( script.includes( 'innerWidth' ) )
 		},
 
+		'row of the step report carries every number it was given'() {
+			const row = $bog_probe_step_row({ scene: 'дальний приказ', peak: 20.74, tick: 5.128, plans: 989, limit: 24 })
+			$mol_assert_ok( row.includes( 'дальний приказ' ) )
+			$mol_assert_ok( row.includes( '20.7' ) )
+			$mol_assert_ok( row.includes( '5.13' ) )
+			$mol_assert_ok( row.includes( '989' ) )
+			$mol_assert_ok( row.includes( '24' ) )
+			$mol_assert_equal( row.split( '|' ).length, 7 )
+		},
+
+		'report of the step appends a head once and a row every time'() {
+			const path = $node.path.join(
+				String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-step-' ) ) ),
+				'summary.md',
+			)
+			const env = { [ $bog_probe_step_env ]: path }
+			const first = { scene: 'один', peak: 9.3, tick: 4.6, plans: 987, limit: 24 }
+			const second = { scene: 'два', peak: 20.7, tick: 5.1, plans: 989, limit: 24 }
+			$mol_assert_equal( $bog_probe_step_add( first, env ), $bog_probe_step_row( first ) )
+			$mol_assert_equal( $bog_probe_step_add( second, env ), $bog_probe_step_row( second ) )
+			const text = String( $node.fs.readFileSync( path ) )
+			$mol_assert_equal( text.split( $bog_probe_step_head ).length, 2 )
+			$mol_assert_ok( text.includes( $bog_probe_step_row( first ) ) )
+			$mol_assert_ok( text.includes( $bog_probe_step_row( second ) ) )
+			$node.fs.rmSync( $node.path.dirname( path ), { recursive: true, force: true } )
+		},
+
+		'without the environment variable the report writes nothing and does not throw'() {
+			$mol_assert_equal( $bog_probe_step_add({ scene: 'ничей', peak: 1, tick: 1, plans: 1, limit: 24 }, {} ), '' )
+		},
+
+		'report survives a path it cannot write'() {
+			const env = { [ $bog_probe_step_env ]: '/нет/такого/каталога/summary.md' }
+			$mol_assert_equal( $bog_probe_step_add({ scene: 'ничей', peak: 1, tick: 1, plans: 1, limit: 24 }, env ), '' )
+		},
+
 	})
 
 }
