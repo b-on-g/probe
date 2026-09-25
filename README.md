@@ -65,7 +65,7 @@ namespace $ {
 	$mol_test({
 		'layout holds at 400'() {
 			const out = $bog_probe_test( 'bog/myapp/probe/-/node.js', 'bog_myapp_probe_check' )
-			$mol_assert_ok( out.includes( $bog_probe_skip ) || out.includes( 'вёрстка в порядке' ) )
+			$mol_assert_ok( $bog_probe_done( out, 'вёрстка в порядке' ) )
 		},
 	})
 }
@@ -84,5 +84,6 @@ node bog/myapp/probe/-/node.test.js
 ## Требования
 
 - Node 22+ (глобальные `fetch` и `WebSocket`).
-- Chrome или Chromium: ищется по `CHROME_BIN`, `CHROME_PATH`, стандартным путям macOS и Linux, затем в `PATH`. Без него проба возвращает `$bog_probe_skip`, тест остаётся зелёным.
+- Chrome или Chromium: ищется по `CHROME_BIN`, `CHROME_PATH`, стандартным путям macOS и Linux, затем в `PATH`. Без него проба возвращает `$bog_probe_skip`.
+- **Пропуск решает не тест, а `$bog_probe_done( out, ...ок )`.** Он отдаёт `true` на любой из переданных успешных строк; на `$bog_probe_skip` смотрит, объявлен ли браузер обязательным переменной `CI` (`$bog_probe_need`): объявлен — падает с внятной причиной, не объявлен — печатает строку про пропуск и пропускает. Сравнивать `out.includes( $bog_probe_skip )` в тесте больше не нужно: без объявления пропуск был зелёным везде, и пропавший Chrome делал зелёным весь набор проб.
 - Собранный `-/index.html` и `-/web.js` приложения, сервер отдаёт их из корня MAM.

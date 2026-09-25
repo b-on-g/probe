@@ -46,6 +46,28 @@ namespace $ {
 
 	export const $bog_probe_skip = 'Chrome не найден, проба пропущена'
 
+	/** Переменная окружения, которой прогон объявляет, что браузер здесь обязателен. */
+	export const $bog_probe_need = 'CI'
+
+	export function $bog_probe_needed( env = $node.process.env ) {
+		return Boolean( env[ $bog_probe_need ] )
+	}
+
+	export function $bog_probe_done( out: string, ... oks: readonly string[] ) {
+
+		for( const ok of oks ) if( out.includes( ok ) ) return true
+
+		if( !out.includes( $bog_probe_skip ) ) return false
+
+		if( $bog_probe_needed() ) return $mol_fail( new Error(
+			`Браузер объявлен обязательным переменной ${ $bog_probe_need }, а ${ $bog_probe_skip }:\n${ out }`
+		) )
+
+		$node.fs.writeSync( 1, `проба: пропущена, ${ $bog_probe_need } не объявлена\n` )
+
+		return true
+	}
+
 	/** Потолок ожидания ответа страницы: за ним страница считается мёртвой, а не занятой. */
 	export const $bog_probe_patience = 120000
 
