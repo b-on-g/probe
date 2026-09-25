@@ -667,13 +667,7 @@ namespace $ {
 			+ ` | ${ frame.tick.toFixed( 2 ) } | ${ frame.plans } | ${ frame.limit } |`
 	}
 
-	export function $bog_probe_step_add( frame: $bog_probe_step_frame, env = $node.process.env ) {
-
-		const path = env[ $bog_probe_step_env ]
-		if( !path ) return ''
-
-		const row = $bog_probe_step_row({ ... frame, where: frame.where ?? $bog_probe_step_where( env ) })
-
+	export function $bog_probe_step_put( path: string, row: string ) {
 		try {
 			let was = ''
 			try { was = String( $node.fs.readFileSync( path ) ) } catch( error ) {}
@@ -683,6 +677,23 @@ namespace $ {
 		} catch( error ) {
 			return ''
 		}
+	}
+
+	export function $bog_probe_step_add( frame: $bog_probe_step_frame, env = $node.process.env ) {
+		const path = env[ $bog_probe_step_env ]
+		if( !path ) return ''
+		return $bog_probe_step_put( path, $bog_probe_step_row({
+			... frame,
+			where: frame.where ?? $bog_probe_step_where( env ),
+		}) )
+	}
+
+	export function $bog_probe_step_file( frame: $bog_probe_step_frame, path: string, env = $node.process.env ) {
+		if( !path ) return ''
+		return $bog_probe_step_put( path, $bog_probe_step_row({
+			... frame,
+			where: frame.where ?? $bog_probe_step_where( env ),
+		}) )
 	}
 
 }

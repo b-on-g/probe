@@ -232,6 +232,26 @@ namespace $ {
 			$node.fs.rmSync( $node.path.dirname( path ), { recursive: true, force: true } )
 		},
 
+		'report into a named file of the pack lives beside the one for the step'() {
+			const dir = String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-file-' ) ) )
+			const path = $node.path.join( dir, 'far.md' )
+			const first = { scene: 'один', where: $bog_probe_step_mine, peak: 9.3, tick: 4.6, plans: 987, limit: 24 }
+			const second = { scene: 'два', where: $bog_probe_step_runner, peak: 34.5, tick: 12.3, plans: 1521, limit: 60 }
+			$mol_assert_equal( $bog_probe_step_file( first, path ), $bog_probe_step_row( first ) )
+			$mol_assert_equal( $bog_probe_step_file( second, path ), $bog_probe_step_row( second ) )
+			const text = String( $node.fs.readFileSync( path ) )
+			$mol_assert_equal( text.split( $bog_probe_step_head ).length, 2 )
+			$mol_assert_ok( text.includes( $bog_probe_step_row( first ) ) )
+			$mol_assert_ok( text.includes( $bog_probe_step_row( second ) ) )
+			$node.fs.rmSync( dir, { recursive: true, force: true } )
+		},
+
+		'report into a file survives a path it cannot write and an empty path'() {
+			const frame = { scene: 'ничей', peak: 1, tick: 1, plans: 1, limit: 24 }
+			$mol_assert_equal( $bog_probe_step_file( frame, '/нет/такого/каталога/far.md' ), '' )
+			$mol_assert_equal( $bog_probe_step_file( frame, '' ), '' )
+		},
+
 		'without the environment variable the report writes nothing and does not throw'() {
 			$mol_assert_equal( $bog_probe_step_add({ scene: 'ничей', peak: 1, tick: 1, plans: 1, limit: 24 }, {} ), '' )
 		},
