@@ -186,13 +186,33 @@ namespace $ {
 		},
 
 		'row of the step report carries every number it was given'() {
-			const row = $bog_probe_step_row({ scene: 'дальний приказ', peak: 20.74, tick: 5.128, plans: 989, limit: 24 })
+			const row = $bog_probe_step_row({
+				scene: 'дальний приказ', where: $bog_probe_step_runner,
+				peak: 34.52, tick: 12.336, plans: 1521, limit: 60,
+			})
 			$mol_assert_ok( row.includes( 'дальний приказ' ) )
-			$mol_assert_ok( row.includes( '20.7' ) )
-			$mol_assert_ok( row.includes( '5.13' ) )
-			$mol_assert_ok( row.includes( '989' ) )
-			$mol_assert_ok( row.includes( '24' ) )
-			$mol_assert_equal( row.split( '|' ).length, 7 )
+			$mol_assert_ok( row.includes( $bog_probe_step_runner ) )
+			$mol_assert_ok( row.includes( '34.5' ) )
+			$mol_assert_ok( row.includes( '12.34' ) )
+			$mol_assert_ok( row.includes( '1521' ) )
+			$mol_assert_ok( row.includes( '60' ) )
+			$mol_assert_equal( row.split( '|' ).length, 8 )
+		},
+
+		'report marks where it was measured, and the mark follows the environment'() {
+			$mol_assert_equal( $bog_probe_step_where({}), $bog_probe_step_mine )
+			$mol_assert_equal( $bog_probe_step_where({ [ $bog_probe_need ]: 'true' }), $bog_probe_step_runner )
+			const path = $node.path.join(
+				String( $node.fs.mkdtempSync( $node.path.join( $node.os.tmpdir(), 'bog-probe-where-' ) ) ),
+				'summary.md',
+			)
+			const frame = { scene: 'один', peak: 9.3, tick: 4.6, plans: 987, limit: 24 }
+			$bog_probe_step_add( frame, { [ $bog_probe_step_env ]: path } )
+			$bog_probe_step_add( frame, { [ $bog_probe_step_env ]: path, [ $bog_probe_need ]: 'true' } )
+			const text = String( $node.fs.readFileSync( path ) )
+			$mol_assert_ok( text.includes( `| один | ${ $bog_probe_step_mine } |` ) )
+			$mol_assert_ok( text.includes( `| один | ${ $bog_probe_step_runner } |` ) )
+			$node.fs.rmSync( $node.path.dirname( path ), { recursive: true, force: true } )
 		},
 
 		'report of the step appends a head once and a row every time'() {
@@ -201,8 +221,8 @@ namespace $ {
 				'summary.md',
 			)
 			const env = { [ $bog_probe_step_env ]: path }
-			const first = { scene: 'один', peak: 9.3, tick: 4.6, plans: 987, limit: 24 }
-			const second = { scene: 'два', peak: 20.7, tick: 5.1, plans: 989, limit: 24 }
+			const first = { scene: 'один', where: $bog_probe_step_mine, peak: 9.3, tick: 4.6, plans: 987, limit: 24 }
+			const second = { scene: 'два', where: $bog_probe_step_runner, peak: 34.5, tick: 12.3, plans: 1521, limit: 60 }
 			$mol_assert_equal( $bog_probe_step_add( first, env ), $bog_probe_step_row( first ) )
 			$mol_assert_equal( $bog_probe_step_add( second, env ), $bog_probe_step_row( second ) )
 			const text = String( $node.fs.readFileSync( path ) )

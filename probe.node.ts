@@ -643,7 +643,15 @@ namespace $ {
 
 	export const $bog_probe_step_env = 'GITHUB_STEP_SUMMARY'
 
-	export const $bog_probe_step_head = '| сценарий | худший кадр, мс | средний, мс | перепланирований | порог, мс |\n| --- | --- | --- | --- | --- |'
+	export const $bog_probe_step_head = '| сценарий | где | худший кадр, мс | средний, мс | перепланирований | порог, мс |\n| --- | --- | --- | --- | --- | --- |'
+
+	export const $bog_probe_step_runner = 'раннер'
+
+	export const $bog_probe_step_mine = 'своя машина'
+
+	export function $bog_probe_step_where( env = $node.process.env ) {
+		return $bog_probe_needed( env ) ? $bog_probe_step_runner : $bog_probe_step_mine
+	}
 
 	export type $bog_probe_step_frame = {
 		readonly scene: string
@@ -651,11 +659,12 @@ namespace $ {
 		readonly tick: number
 		readonly plans: number
 		readonly limit: number
+		readonly where?: string
 	}
 
 	export function $bog_probe_step_row( frame: $bog_probe_step_frame ) {
-		return `| ${ frame.scene } | ${ frame.peak.toFixed( 1 ) } | ${ frame.tick.toFixed( 2 ) }`
-			+ ` | ${ frame.plans } | ${ frame.limit } |`
+		return `| ${ frame.scene } | ${ frame.where ?? '' } | ${ frame.peak.toFixed( 1 ) }`
+			+ ` | ${ frame.tick.toFixed( 2 ) } | ${ frame.plans } | ${ frame.limit } |`
 	}
 
 	export function $bog_probe_step_add( frame: $bog_probe_step_frame, env = $node.process.env ) {
@@ -663,7 +672,7 @@ namespace $ {
 		const path = env[ $bog_probe_step_env ]
 		if( !path ) return ''
 
-		const row = $bog_probe_step_row( frame )
+		const row = $bog_probe_step_row({ ... frame, where: frame.where ?? $bog_probe_step_where( env ) })
 
 		try {
 			let was = ''
